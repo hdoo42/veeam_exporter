@@ -1,0 +1,68 @@
+---
+# Veeam Backup & Replication Managed Servers Collector
+collector_name: managed_servers_metrics
+metric_prefix: veeam_backup
+
+scripts:
+  get managed_servers:
+    - name: collect all managed servers
+      query:
+        url: /v1/backupInfrastructure/managedServers
+        var_name: servers_data
+
+    - name: generate summary metrics
+      set_fact:
+        servers_total: "{{ len .servers_data.data }}"
+        vmware_servers: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < servers_data.data.length; i++) {
+              if (servers_data.data[i].type === "ViHost") count++;
+            }
+            count;
+        windows_servers: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < servers_data.data.length; i++) {
+              if (servers_data.data[i].type === "WindowsHost") count++;
+            }
+            count;
+        linux_servers: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < servers_data.data.length; i++) {
+              if (servers_data.data[i].type === "LinuxHost") count++;
+            }
+            count;
+
+    - name: export metrics
+      metrics:
+        - metric_name: managed_servers_total
+          help: "Total number of managed servers"
+          type: gauge
+          values:
+            _: "$servers_total"
+
+        - metric_name: managed_servers_by_type
+          help: "Number of managed servers by type"
+          type: gauge
+          key_labels:
+            type: "vmware"
+          values:
+            _: "$vmware_servers"
+
+        - metric_name: managed_servers_by_type
+          help: "Number of managed servers by type"
+          type: gauge
+          key_labels:
+            type: "windows"
+          values:
+            _: "$windows_servers"
+
+        - metric_name: managed_servers_by_type
+          help: "Number of managed servers by type"
+          type: gauge
+          key_labels:
+            type: "linux"
+          values:
+            _: "$linux_servers"

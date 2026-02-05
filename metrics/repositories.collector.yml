@@ -1,0 +1,58 @@
+---
+# Veeam Backup & Replication Repositories Collector
+collector_name: repositories_metrics
+metric_prefix: veeam_backup
+
+scripts:
+  get repositories:
+    - name: collect all repositories
+      query:
+        url: /v1/backupInfrastructure/repositories
+        var_name: repos_data
+
+    - name: collect repository states
+      query:
+        url: /v1/backupInfrastructure/repositories/states
+        var_name: repos_states
+
+    - name: generate summary metrics
+      set_fact:
+        repos_total: "{{ len .repos_data.data }}"
+        repos_winlocal: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < repos_data.data.length; i++) {
+              if (repos_data.data[i].type === "WinLocal") count++;
+            }
+            count;
+        repos_linuxlocal: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < repos_data.data.length; i++) {
+              if (repos_data.data[i].type === "LinuxLocal") count++;
+            }
+            count;
+
+    - name: export metrics
+      metrics:
+        - metric_name: repositories_total
+          help: "Total number of backup repositories"
+          type: gauge
+          values:
+            _: "$repos_total"
+
+        - metric_name: repositories_by_type
+          help: "Number of repositories by type"
+          type: gauge
+          key_labels:
+            type: "WinLocal"
+          values:
+            _: "$repos_winlocal"
+
+        - metric_name: repositories_by_type
+          help: "Number of repositories by type"
+          type: gauge
+          key_labels:
+            type: "LinuxLocal"
+          values:
+            _: "$repos_linuxlocal"

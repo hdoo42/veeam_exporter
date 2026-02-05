@@ -1,0 +1,22 @@
+# Example Veeam Backup & Replication target configuration
+# Copy this file and modify for your environment
+
+name: veeam.42gyeongsan.kr
+scheme: https
+host: veeam.42gyeongsan.kr
+port: 9419
+# Use the auth_name from auth_configs in config.yml
+auth_name: default
+profile: veeam_backup
+collectors:
+  - ~.*_metrics
+# Additional target example (create a new file for each target)
+# name: veeam-server-02
+# scheme: https
+# host: veeam-server-02.domain.com
+# port: 9419
+# auth_name: default
+# profile: veeam_backup
+# collectors:
+#   - server_info_metrics
+#   - sessions_metrics

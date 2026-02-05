@@ -1,0 +1,129 @@
+---
+# Veeam Backup & Replication Backups Collector
+collector_name: backups_metrics
+metric_prefix: veeam_backup
+
+scripts:
+  get backups:
+    - name: collect all backups
+      query:
+        url: /v1/backups
+        var_name: backups_data
+        debug: yes
+
+    - name: generate summary metrics
+      set_fact:
+        backups_total: "{{ len .backups_data.data }}"
+        vmware_backups: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < backups_data.data.length; i++) {
+              if (backups_data.data[i].platformName === "VmWare") count++;
+            }
+            count;
+        hyperv_backups: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < backups_data.data.length; i++) {
+              if (backups_data.data[i].platformName === "HyperV") count++;
+            }
+            count;
+        windows_physical_backups: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < backups_data.data.length; i++) {
+              if (backups_data.data[i].platformName === "WindowsPhysical") count++;
+            }
+            count;
+        linux_physical_backups: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < backups_data.data.length; i++) {
+              if (backups_data.data[i].platformName === "LinuxPhysical") count++;
+            }
+            count;
+        vcd_backups: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < backups_data.data.length; i++) {
+              if (backups_data.data[i].platformName === "Vcd") count++;
+            }
+            count;
+        nas_backups: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < backups_data.data.length; i++) {
+              if (backups_data.data[i].platformName === "NasBackup") count++;
+            }
+            count;
+        tape_backups: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < backups_data.data.length; i++) {
+              if (backups_data.data[i].platformName === "Tape") count++;
+            }
+            count;
+
+    - name: export metrics
+      metrics:
+        - metric_name: backups_total
+          help: "Total number of backups"
+          type: gauge
+          values:
+            _: "$backups_total"
+
+        - metric_name: backups_by_platform
+          help: "Number of backups by platform type"
+          type: gauge
+          key_labels:
+            platform: "vmware"
+          values:
+            _: "$vmware_backups"
+
+        - metric_name: backups_by_platform
+          help: "Number of backups by platform type"
+          type: gauge
+          key_labels:
+            platform: "hyperv"
+          values:
+            _: "$hyperv_backups"
+
+        - metric_name: backups_by_platform
+          help: "Number of backups by platform type"
+          type: gauge
+          key_labels:
+            platform: "windows_physical"
+          values:
+            _: "$windows_physical_backups"
+
+        - metric_name: backups_by_platform
+          help: "Number of backups by platform type"
+          type: gauge
+          key_labels:
+            platform: "linux_physical"
+          values:
+            _: "$linux_physical_backups"
+
+        - metric_name: backups_by_platform
+          help: "Number of backups by platform type"
+          type: gauge
+          key_labels:
+            platform: "vcd"
+          values:
+            _: "$vcd_backups"
+
+        - metric_name: backups_by_platform
+          help: "Number of backups by platform type"
+          type: gauge
+          key_labels:
+            platform: "nas"
+          values:
+            _: "$nas_backups"
+
+        - metric_name: backups_by_platform
+          help: "Number of backups by platform type"
+          type: gauge
+          key_labels:
+            platform: "tape"
+          values:
+            _: "$tape_backups"

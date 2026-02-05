@@ -1,0 +1,53 @@
+---
+# Veeam Backup & Replication Proxies Collector
+collector_name: proxies_metrics
+metric_prefix: veeam_backup
+
+scripts:
+  get proxies:
+    - name: collect all proxies
+      query:
+        url: /v1/backupInfrastructure/proxies
+        var_name: proxies_data
+
+    - name: generate summary metrics
+      set_fact:
+        proxies_total: "{{ len .proxies_data.data }}"
+        vmware_proxies: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < proxies_data.data.length; i++) {
+              if (proxies_data.data[i].type === "ViProxy") count++;
+            }
+            count;
+        max_tasks_total: >-
+          js:
+            var total = 0;
+            for (var i = 0; i < proxies_data.data.length; i++) {
+              if (proxies_data.data[i].server && proxies_data.data[i].server.maxTaskCount) {
+                total += proxies_data.data[i].server.maxTaskCount;
+              }
+            }
+            total;
+
+    - name: export metrics
+      metrics:
+        - metric_name: proxies_total
+          help: "Total number of backup proxies"
+          type: gauge
+          values:
+            _: "$proxies_total"
+
+        - metric_name: proxies_by_type
+          help: "Number of backup proxies by type"
+          type: gauge
+          key_labels:
+            type: "vmware"
+          values:
+            _: "$vmware_proxies"
+
+        - metric_name: proxies_max_tasks_total
+          help: "Total maximum concurrent tasks across all proxies"
+          type: gauge
+          values:
+            _: "$max_tasks_total"

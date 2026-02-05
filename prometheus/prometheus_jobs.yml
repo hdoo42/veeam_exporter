@@ -1,0 +1,28 @@
+# Prometheus job configuration for Veeam Backup & Replication Exporter
+# Add this to your prometheus.yml file
+
+  - job_name: "veeam_backup"
+    scrape_interval: 120s
+    scrape_timeout: 60s
+    metrics_path: /metrics
+
+    # Static configuration example
+    static_configs:
+      - targets: [ veeam.42gyeongsan.kr ]
+        labels:
+          environment: "PROD"
+
+    # File-based service discovery (recommended)
+    # file_sd_configs:
+    #   - files: [ "/etc/prometheus/veeam_backup/*.yml" ]
+
+    relabel_configs:
+      # Set target parameter from address
+      - source_labels: [__address__]
+        target_label: __param_target
+      # Set instance label from target
+      - source_labels: [__param_target]
+        target_label: instance
+      # Set the actual exporter address
+      - target_label: __address__
+        replacement: "localhost:9321"  # The veeam_backup_exporter's hostname:port

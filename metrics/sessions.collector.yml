@@ -1,0 +1,98 @@
+---
+# Veeam Backup & Replication Sessions Collector
+collector_name: sessions_metrics
+metric_prefix: veeam_backup
+
+scripts:
+  get sessions:
+    - name: collect all sessions
+      query:
+        url: /v1/sessions
+        var_name: sessions_data
+
+    - name: generate summary metrics
+      set_fact:
+        sessions_total: "{{ len .sessions_data.data }}"
+        sessions_stopped: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < sessions_data.data.length; i++) {
+              if (sessions_data.data[i].state === "Stopped") count++;
+            }
+            count;
+        sessions_working: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < sessions_data.data.length; i++) {
+              if (sessions_data.data[i].state === "Working") count++;
+            }
+            count;
+        sessions_success: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < sessions_data.data.length; i++) {
+              if (sessions_data.data[i].result && sessions_data.data[i].result.result === "Success") count++;
+            }
+            count;
+        sessions_failed: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < sessions_data.data.length; i++) {
+              if (sessions_data.data[i].result && sessions_data.data[i].result.result === "Failed") count++;
+            }
+            count;
+        sessions_job: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < sessions_data.data.length; i++) {
+              if (sessions_data.data[i].sessionType === "Job") count++;
+            }
+            count;
+
+    - name: export metrics
+      metrics:
+        - metric_name: sessions_total
+          help: "Total number of sessions"
+          type: gauge
+          values:
+            _: "$sessions_total"
+
+        - metric_name: sessions_by_state
+          help: "Number of sessions by state"
+          type: gauge
+          key_labels:
+            state: "Stopped"
+          values:
+            _: "$sessions_stopped"
+
+        - metric_name: sessions_by_state
+          help: "Number of sessions by state"
+          type: gauge
+          key_labels:
+            state: "Working"
+          values:
+            _: "$sessions_working"
+
+        - metric_name: sessions_by_result
+          help: "Number of sessions by result"
+          type: gauge
+          key_labels:
+            result: "Success"
+          values:
+            _: "$sessions_success"
+
+        - metric_name: sessions_by_result
+          help: "Number of sessions by result"
+          type: gauge
+          key_labels:
+            result: "Failed"
+          values:
+            _: "$sessions_failed"
+
+        - metric_name: sessions_by_type
+          help: "Number of sessions by type"
+          type: gauge
+          key_labels:
+            type: "Job"
+          values:
+            _: "$sessions_job"

@@ -1,0 +1,49 @@
+---
+# Veeam Backup & Replication Jobs Collector
+collector_name: jobs_metrics
+metric_prefix: veeam_backup
+
+scripts:
+  get jobs:
+    - name: collect all jobs
+      query:
+        url: /v1/jobs
+        var_name: jobs_data
+
+    - name: generate summary metrics
+      set_fact:
+        jobs_total: "{{ len .jobs_data.data }}"
+        enabled_jobs: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < jobs_data.data.length; i++) {
+              if (jobs_data.data[i].isDisabled === false) count++;
+            }
+            count;
+        disabled_jobs: >-
+          js:
+            var count = 0;
+            for (var i = 0; i < jobs_data.data.length; i++) {
+              if (jobs_data.data[i].isDisabled === true) count++;
+            }
+            count;
+
+    - name: export metrics
+      metrics:
+        - metric_name: jobs_total
+          help: "Total number of backup jobs"
+          type: gauge
+          values:
+            _: "$jobs_total"
+
+        - metric_name: jobs_enabled
+          help: "Number of enabled backup jobs"
+          type: gauge
+          values:
+            _: "$enabled_jobs"
+
+        - metric_name: jobs_disabled
+          help: "Number of disabled backup jobs"
+          type: gauge
+          values:
+            _: "$disabled_jobs"

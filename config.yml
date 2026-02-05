@@ -1,0 +1,166 @@
+# Veeam Backup & Replication REST API Exporter Configuration
+# Global defaults.
+global:
+  # max timeout for the exporter: if prometheus sends a value greater than scrape_timeout, scrape_timeout will be used
+  scrape_timeout: 30s
+  # Subtracted from Prometheus' scrape_timeout to give us some headroom and prevent Prometheus from timing out first.
+  scrape_timeout_offset: 500ms
+  # Minimum interval between collector runs: by default (0s) collectors are executed on every scrape.
+  min_interval: 0s
+  # all unsuccessful queries will be retried this number of times
+  query_retry: 3
+  # all metrics will be named "[metric_prefix]_[metric_name]"
+  metric_prefix: "veeam_backup"
+  # all http codes that will consider the connection has an invalid auth and must do a Login()
+  invalid_auth_code: [401, 403]
+  exporter_name: veeam_backup_exporter
+
+profiles:
+  veeam_backup:
+    scripts:
+      init:
+        - name: default headers and settings
+          set_fact:
+            headers:
+              - name: "Content-Type"
+                value: "application/x-www-form-urlencoded"
+              - name: "Accept"
+                value: "application/json"
+              - name: "x-api-version"
+                value: "1.0-rev1"
+            scheme: https
+            port: 9419
+            verifySSL: false
+            base_url: /api
+
+      login:
+        - name: check if token is expired
+          set_fact:
+            token_issued_time: >-
+              js: Date.now()
+            needs_refresh: >-
+              js: (typeof token_expires_at === 'undefined' || !token_expires_at || Date.now() >= token_expires_at)
+
+        - name: skip login if token is valid
+          set_fact:
+            logged: true
+          when:
+            - "js: needs_refresh === false && typeof access_token !== 'undefined' && access_token"
+
+        - name: init login loop
+          vars:
+            login_retry: 0
+            status_code: 0
+          until: "js: login_retry < queryRetry"
+          when:
+            - "js: needs_refresh === true"
+          actions:
+            - name: OAuth2 token request with refresh token if available
+              query:
+                url: /oauth2/token
+                method: post
+                data: >-
+                  js: (typeof refresh_token !== 'undefined' && refresh_token && typeof token_expires_at !== 'undefined' && token_expires_at) ? "grant_type=refresh_token&refresh_token=" + refresh_token : "grant_type=password&username=" + exporter.queryEscape(user) + "&password=" + exporter.queryEscape(password)
+                ok_status: 200
+                var_name: token_response
+
+            - name: analyze login response
+              play_script: auth_check
+
+      auth_check:
+        - name: analyze login response success
+          set_fact:
+            access_token: "{{ .token_response.access_token }}"
+            refresh_token: "{{ .token_response.refresh_token }}"
+            token_expires_at: >-
+              js: Date.now() + (token_response.expires_in * 1000)
+            expires_in: "{{ .token_response.expires_in }}"
+            logged: true
+            login_retry: $queryRetry
+          when:
+            - "js: status_code == 200"
+
+        - name: update headers with bearer token
+          set_fact:
+            headers:
+              - name: "Content-Type"
+                value: "application/json"
+              - name: "Accept"
+                value: "application/json"
+              - name: "x-api-version"
+                value: "1.0-rev1"
+              - name: "Authorization"
+                value: "Bearer {{ .access_token }}"
+          when:
+            - "js: status_code == 200"
+
+        - name: analyze login response failure
+          set_fact:
+            logged: false
+            login_retry: $queryRetry
+          when:
+            - "js: (status_code == 401) || (status_code == 403)"
+
+        - name: analyze login response retry
+          set_fact:
+            logged: false
+            login_retry: "js: ++login_retry"
+          when:
+            - "js: (status_code != 200) && (status_code != 401) && (status_code != 403)"
+
+      ping:
+        - name: check connection
+          query:
+            url: /v1/serverTime
+            method: get
+            ok_status: 200
+            var_name: server_time
+
+# list of authentication configurations to use to access a target.
+auth_configs:
+  # use this auth_config to authenticate via environment variables
+  default:
+    mode: script
+    user: $env:VEEAM_USER
+    password: $env:VEEAM_PASSWORD
+
+  # example with plain text credentials (not recommended for production)
+  # plain_auth:
+  #   mode: script
+  #   user: bocal
+  #   password: 2loIXsdwpi6eahfYzhcg
+
+  # example with encrypted password
+  # encrypted_auth:
+  #   mode: script
+  #   user: bocal
+  #   password: "/encrypted/your_encrypted_password_here"
+
+# The targets to monitor and the collectors to execute on it.
+targets:
+  # default target is used as a pattern for exporter queries with target name not defined locally.
+  - name: default
+    scheme: https
+    host: template
+    port: 9419
+    auth_name: default
+    profile: veeam_backup
+    collectors:
+      - ~.*_metrics
+
+  # Example of a specific target
+  # - name: veeam.42gyeongsan.kr
+  #   scheme: https
+  #   host: veeam.42gyeongsan.kr
+  #   port: 9419
+  #   auth_name: default
+  #   profile: veeam_backup
+  #   collectors:
+  #     - ~.*_metrics
+
+  # Load targets from files
+  - targets_files: ["targets/*.yml"]
+
+# Collector files specifies a list of globs. One collector definition is read from each matching file.
+collector_files:
+  - "metrics/*.collector.yml"

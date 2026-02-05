@@ -1,0 +1,24 @@
+---
+# Veeam Backup & Replication Server Information Collector
+# Collects basic server information to verify connectivity
+collector_name: server_info_metrics
+metric_prefix: veeam_backup
+
+scripts:
+  get server_info:
+    - name: collect server certificate info
+      query:
+        url: /v1/serverCertificate
+        var_name: server_cert
+
+    - name: generate server info metrics
+      metrics:
+        - metric_name: info
+          help: "Veeam Backup & Replication server information"
+          type: gauge
+          key_labels:
+            thumbprint: "{{ .server_cert.thumbprint }}"
+            issued_to: "{{ .server_cert.issuedTo }}"
+            issued_by: "{{ .server_cert.issuedBy }}"
+          values:
+            _: 1

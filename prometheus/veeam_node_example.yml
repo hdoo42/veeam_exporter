@@ -1,0 +1,11 @@
+# Example node file for file-based service discovery
+# Place this in the directory specified in prometheus file_sd_configs
+
+- targets: [ "veeam.42gyeongsan.kr" ]
+  labels:
+    __tmp_source_host: "localhost:9321"  # exporter host:port
+    # If you have encrypted passwords, provide the auth_key
+    # __param_auth_key: "your_16_24_or_32_byte_key"
+    host: "veeam.42gyeongsan.kr"
+    environment: "PROD"
+    datacenter: "DC1"
