@@ -1,6 +1,5 @@
-# Test configuration for mock Veeam server
-# Token lifetime: 60 seconds (set in mock server)
-# Should refresh at: 60 - 5 = 55 seconds after issuance
+# Test configuration for token refresh validation.
+# This file intentionally uses a short refresh margin for fast CI/local testing.
 
 global:
   scrape_timeout: 30s
@@ -26,15 +25,16 @@ profiles:
             port: 9999
             verifySSL: false
             base_url: /api
+            # Keep this short for test speed. Production config uses 300000 ms.
+            refresh_margin_ms: 5000
 
       login:
         - name: check if token is expired
           set_fact:
             token_issued_time: >-
               js: Date.now()
-            # Refresh token 5 minutes (300000ms) before expiry
             needs_refresh: >-
-              js: (typeof token_expires_at === 'undefined' || !token_expires_at || Date.now() >= (token_expires_at - 300000))
+              js: (typeof token_expires_at === 'undefined' || !token_expires_at || Date.now() >= (token_expires_at - refresh_margin_ms))
 
         - name: skip login if token is valid
           set_fact:
@@ -120,7 +120,7 @@ auth_configs:
 targets:
   - name: default
     scheme: http
-    host: localhost
+    host: 127.0.0.1
     port: 9999
     auth_name: test_auth
     profile: veeam_test
@@ -128,5 +128,4 @@ targets:
       - test_metrics
 
 collector_files:
-  - "test/test_collector.yml"
   - "test_collector.yml"
