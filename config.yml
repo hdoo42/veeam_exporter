@@ -38,8 +38,9 @@ profiles:
           set_fact:
             token_issued_time: >-
               js: Date.now()
+            # Refresh token 5 minutes before expiry to avoid race conditions
             needs_refresh: >-
-              js: (typeof token_expires_at === 'undefined' || !token_expires_at || Date.now() >= token_expires_at)
+              js: (typeof token_expires_at === 'undefined' || !token_expires_at || Date.now() >= (token_expires_at - 300000))
 
         - name: skip login if token is valid
           set_fact:
@@ -60,7 +61,7 @@ profiles:
                 url: /oauth2/token
                 method: post
                 data: >-
-                  js: (typeof refresh_token !== 'undefined' && refresh_token && typeof token_expires_at !== 'undefined' && token_expires_at) ? "grant_type=refresh_token&refresh_token=" + refresh_token : "grant_type=password&username=" + exporter.queryEscape(user) + "&password=" + exporter.queryEscape(password)
+                  js: (typeof refresh_token !== 'undefined' && refresh_token) ? "grant_type=refresh_token&refresh_token=" + refresh_token : "grant_type=password&username=" + exporter.queryEscape(user) + "&password=" + exporter.queryEscape(password)
                 ok_status: 200
                 var_name: token_response
 

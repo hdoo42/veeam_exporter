@@ -1,0 +1,35 @@
+---
+# Test collector for mock server
+collector_name: test_metrics
+metric_prefix: veeam_backup_test
+
+scripts:
+  get test_data:
+    - name: collect server time
+      query:
+        url: /v1/serverTime
+        var_name: server_time
+
+    - name: collect backups
+      query:
+        url: /v1/backups
+        var_name: backups_data
+
+    - name: generate test metrics
+      set_fact:
+        backups_total: "{{ len .backups_data.data }}"
+
+    - name: export metrics
+      metrics:
+        - metric_name: backups_total
+          help: "Total number of backups (test)"
+          type: gauge
+          values:
+            _: "$backups_total"
+
+        - metric_name: test_timestamp
+          help: "Last test run timestamp"
+          type: gauge
+          values:
+            _: >-
+              js: Date.now() / 1000

@@ -1,0 +1,132 @@
+# Test configuration for mock Veeam server
+# Token lifetime: 60 seconds (set in mock server)
+# Should refresh at: 60 - 5 = 55 seconds after issuance
+
+global:
+  scrape_timeout: 30s
+  query_retry: 3
+  metric_prefix: "veeam_backup_test"
+  invalid_auth_code: [401, 403]
+  exporter_name: veeam_test_exporter
+
+profiles:
+  veeam_test:
+    scripts:
+      init:
+        - name: default headers and settings
+          set_fact:
+            headers:
+              - name: "Content-Type"
+                value: "application/x-www-form-urlencoded"
+              - name: "Accept"
+                value: "application/json"
+              - name: "x-api-version"
+                value: "1.0-rev1"
+            scheme: http
+            port: 9999
+            verifySSL: false
+            base_url: /api
+
+      login:
+        - name: check if token is expired
+          set_fact:
+            token_issued_time: >-
+              js: Date.now()
+            # Refresh token 5 minutes (300000ms) before expiry
+            needs_refresh: >-
+              js: (typeof token_expires_at === 'undefined' || !token_expires_at || Date.now() >= (token_expires_at - 300000))
+
+        - name: skip login if token is valid
+          set_fact:
+            logged: true
+          when:
+            - "js: needs_refresh === false && typeof access_token !== 'undefined' && access_token"
+
+        - name: init login loop
+          vars:
+            login_retry: 0
+            status_code: 0
+          until: "js: login_retry < queryRetry"
+          when:
+            - "js: needs_refresh === true"
+          actions:
+            - name: OAuth2 token request with refresh token if available
+              query:
+                url: /oauth2/token
+                method: post
+                data: >-
+                  js: (typeof refresh_token !== 'undefined' && refresh_token) ? "grant_type=refresh_token&refresh_token=" + refresh_token : "grant_type=password&username=" + exporter.queryEscape(user) + "&password=" + exporter.queryEscape(password)
+                ok_status: 200
+                var_name: token_response
+
+            - name: analyze login response
+              play_script: auth_check
+
+      auth_check:
+        - name: analyze login response success
+          set_fact:
+            access_token: "{{ .token_response.access_token }}"
+            refresh_token: "{{ .token_response.refresh_token }}"
+            token_expires_at: >-
+              js: Date.now() + (token_response.expires_in * 1000)
+            expires_in: "{{ .token_response.expires_in }}"
+            logged: true
+            login_retry: $queryRetry
+          when:
+            - "js: status_code == 200"
+
+        - name: update headers with bearer token
+          set_fact:
+            headers:
+              - name: "Content-Type"
+                value: "application/json"
+              - name: "Accept"
+                value: "application/json"
+              - name: "x-api-version"
+                value: "1.0-rev1"
+              - name: "Authorization"
+                value: "Bearer {{ .access_token }}"
+          when:
+            - "js: status_code == 200"
+
+        - name: analyze login response failure
+          set_fact:
+            logged: false
+            login_retry: $queryRetry
+          when:
+            - "js: (status_code == 401) || (status_code == 403)"
+
+        - name: analyze login response retry
+          set_fact:
+            logged: false
+            login_retry: "js: ++login_retry"
+          when:
+            - "js: (status_code != 200) && (status_code != 401) && (status_code != 403)"
+
+      ping:
+        - name: check connection
+          query:
+            url: /v1/serverTime
+            method: get
+            ok_status: 200
+            var_name: server_time
+
+auth_configs:
+  test_auth:
+    mode: script
+    user: test
+    password: test
+
+targets:
+  - name: default
+    scheme: http
+    host: localhost
+    port: 9999
+    auth_name: test_auth
+    profile: veeam_test
+    collectors:
+      - test_metrics
+
+collector_files:
+  - "test/test_collector.yml"
+  - "test_collector.yml"
