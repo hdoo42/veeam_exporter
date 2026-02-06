@@ -32,15 +32,16 @@ profiles:
             port: 9419
             verifySSL: false
             base_url: /api
+            # Refresh token 5 minutes before expiry to avoid 401 during collector phase
+            refresh_margin_ms: 300000
 
       login:
         - name: check if token is expired
           set_fact:
             token_issued_time: >-
               js: Date.now()
-            # Refresh token 5 minutes before expiry to avoid race conditions
             needs_refresh: >-
-              js: (typeof token_expires_at === 'undefined' || !token_expires_at || Date.now() >= (token_expires_at - 300000))
+              js: (typeof token_expires_at === 'undefined' || !token_expires_at || Date.now() >= (token_expires_at - refresh_margin_ms))
 
         - name: skip login if token is valid
           set_fact:
@@ -56,13 +57,26 @@ profiles:
           when:
             - "js: needs_refresh === true"
           actions:
+            - name: set oauth2 request headers
+              set_fact:
+                headers:
+                  - name: "Content-Type"
+                    value: "application/x-www-form-urlencoded"
+                  - name: "Accept"
+                    value: "application/json"
+                  - name: "x-api-version"
+                    value: "1.0-rev1"
+                  - name: "Authorization"
+                    value: "__delete__"
+                    action: delete
+
             - name: OAuth2 token request with refresh token if available
               query:
                 url: /oauth2/token
                 method: post
                 data: >-
                   js: (typeof refresh_token !== 'undefined' && refresh_token) ? "grant_type=refresh_token&refresh_token=" + refresh_token : "grant_type=password&username=" + exporter.queryEscape(user) + "&password=" + exporter.queryEscape(password)
-                ok_status: 200
+                ok_status: [200, 401, 403]
                 var_name: token_response
 
             - name: analyze login response
@@ -95,12 +109,21 @@ profiles:
           when:
             - "js: status_code == 200"
 
-        - name: analyze login response failure
+        - name: refresh token rejected -> fallback to password grant
+          set_fact:
+            logged: false
+            refresh_token: ""
+            access_token: ""
+            login_retry: "js: ++login_retry"
+          when:
+            - "js: ((status_code == 401) || (status_code == 403)) && (typeof refresh_token !== 'undefined' && refresh_token)"
+
+        - name: login response unauthorized (no refresh available)
           set_fact:
             logged: false
             login_retry: $queryRetry
           when:
-            - "js: (status_code == 401) || (status_code == 403)"
+            - "js: ((status_code == 401) || (status_code == 403)) && (typeof refresh_token === 'undefined' || !refresh_token)"
 
         - name: analyze login response retry
           set_fact:
@@ -110,6 +133,12 @@ profiles:
             - "js: (status_code != 200) && (status_code != 401) && (status_code != 403)"
 
       ping:
+        - name: force re-login before ping when token is close to expiry
+          set_fact:
+            logged: false
+          when:
+            - "js: typeof token_expires_at !== 'undefined' && token_expires_at && Date.now() >= (token_expires_at - refresh_margin_ms)"
+
         - name: check connection
           query:
             url: /v1/serverTime
